@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# curl -fsSL https://anudeepchpaul.github.io/kickstart.sh | bash
+# curl -fsSL https://achandrapaul.github.io/kickstart.sh | bash
 set -euo pipefail
 
-readonly dotfiles_remote="git@github.com:AnudeepChPaul/terminal-setup.git"
+readonly dotfiles_remote="git@github.com:achandrapaul/terminal-setup.git"
 readonly dotfiles_source_dir="$HOME/.local/share/chezmoi"
 readonly mise_key_fingerprint="24853EC9F655CE80B48E6C3A8B81C9D17413A06D"
 readonly mise_docs_url="https://raw.githubusercontent.com/jdx/mise/main/docs/installing-mise.md"
