@@ -3,10 +3,13 @@
 set -euo pipefail
 
 readonly dotfiles_remote="git@github.com:AnudeepChPaul/terminal-setup.git"
-readonly dotfiles_git_dir="$HOME/.cfg"
+readonly dotfiles_source_dir="$HOME/.local/share/chezmoi"
 readonly mise_key_fingerprint="24853EC9F655CE80B48E6C3A8B81C9D17413A06D"
 readonly mise_docs_url="https://raw.githubusercontent.com/jdx/mise/main/docs/installing-mise.md"
 readonly mise_bin="$HOME/.local/bin/mise"
+readonly backup_dir="$HOME/.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
+readonly dotbare_dir="${DOTBARE_DIR:-$HOME/.cfg}"
+readonly dotbare_tool_dir="$HOME/.dotbare"
 
 platform=""
 gh_freshly_authenticated=0
@@ -186,28 +189,40 @@ setup_signing() {
   [ -n "$git_signing_key" ] || git config --file "$local_git_config" user.signingkey "$ssh_public_key"
 }
 
-dotfiles_git() { git --git-dir="$dotfiles_git_dir" --work-tree="$HOME" "$@"; }
+chezmoi() { "$mise_bin" x chezmoi@latest -- chezmoi "$@"; }
+
+remove_dotbare() {
+  if [ "$(git --git-dir="$dotbare_dir" rev-parse --is-bare-repository 2>/dev/null)" = "true" ]; then
+    log "moving dotbare repo $dotbare_dir to $backup_dir"
+    mkdir -p "$backup_dir"
+    mv "$dotbare_dir" "$backup_dir/"
+  fi
+  if [ -f "$dotbare_tool_dir/dotbare" ]; then
+    log "moving dotbare tool $dotbare_tool_dir to $backup_dir"
+    mkdir -p "$backup_dir"
+    mv "$dotbare_tool_dir" "$backup_dir/"
+  fi
+  if command -v brew >/dev/null && brew list --formula dotbare >/dev/null 2>&1; then
+    log "uninstalling dotbare via brew"
+    brew uninstall dotbare
+  fi
+}
 
 clone_dotfiles() {
-  if [ -d "$dotfiles_git_dir" ]; then
-    log "dotfiles already cloned at $dotfiles_git_dir"
+  if [ -d "$dotfiles_source_dir/.git" ]; then
+    log "dotfiles already cloned at $dotfiles_source_dir"
     return
   fi
-  log "cloning dotfiles into $dotfiles_git_dir"
-  git clone --bare "$dotfiles_remote" "$dotfiles_git_dir"
-  dotfiles_git config status.showUntrackedFiles no
-  if ! dotfiles_git checkout 2>/dev/null; then
-    local backup_dir
-    backup_dir="$HOME/.dotfiles-backup-$(date +%Y%m%d-%H%M%S)"
-    log "backing up conflicting files to $backup_dir"
-    dotfiles_git ls-tree -r --name-only HEAD | while read -r tracked_path; do
-      if [ -e "$HOME/$tracked_path" ]; then
-        mkdir -p "$backup_dir/$(dirname "$tracked_path")"
-        mv "$HOME/$tracked_path" "$backup_dir/$tracked_path"
-      fi
-    done
-    dotfiles_git checkout
-  fi
+  log "cloning dotfiles into $dotfiles_source_dir"
+  chezmoi init "$dotfiles_remote" </dev/tty
+  chezmoi managed --include=files,symlinks | while read -r managed_path; do
+    if [ -e "$HOME/$managed_path" ] || [ -L "$HOME/$managed_path" ]; then
+      mkdir -p "$backup_dir/$(dirname "$managed_path")"
+      mv "$HOME/$managed_path" "$backup_dir/$managed_path"
+    fi
+  done
+  [ -d "$backup_dir" ] && log "backed up conflicting files to $backup_dir"
+  chezmoi apply --force
 }
 
 run_bootstrap() {
@@ -226,6 +241,7 @@ main() {
   install_gh
   setup_git_auth
   setup_signing
+  remove_dotbare
   clone_dotfiles
   run_bootstrap
   printf '\033[32m✓\033[0m done, open a new shell\n'
